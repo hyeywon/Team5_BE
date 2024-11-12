@@ -7,10 +7,12 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.List;
 import ojosama.talkak.reaction.service.ReactionService;
+import ojosama.talkak.video.request.HighlightRequest;
 import ojosama.talkak.video.request.VideoCategoryRequest;
 import ojosama.talkak.video.request.VideoRequest;
 import ojosama.talkak.video.request.YoutubeCategoryRequest;
 import ojosama.talkak.video.request.YoutubeUrlValidationRequest;
+import ojosama.talkak.video.response.AwsS3Response;
 import ojosama.talkak.video.response.VideoDetailsResponse;
 import ojosama.talkak.video.response.VideoInfoResponse;
 import ojosama.talkak.video.response.VideoResponse;
@@ -50,11 +52,11 @@ public class VideoController implements VideoApiController {
     }
 
     @GetMapping
-    public ResponseEntity<List<VideoInfoResponse>> getPopularVideosByCategory(@RequestBody VideoCategoryRequest req,
+    public ResponseEntity<List<VideoInfoResponse>> getPopularVideosByCategory(@RequestParam("categoryId") Long categoryId,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "5") int size) {
         Pageable pageable = PageRequest.of(page, size);
-        List<VideoInfoResponse> videos = videoService.getVideoByCategory(req, pageable);
+        List<VideoInfoResponse> videos = videoService.getVideoByCategory(new VideoCategoryRequest(categoryId), pageable);
         return ResponseEntity.ok(videos);
     }
 
@@ -65,9 +67,9 @@ public class VideoController implements VideoApiController {
     }
 
     @PostMapping("/upload")
-    public ResponseEntity<VideoResponse> uploadShortsVideo(
-            @RequestParam("file") MultipartFile file, VideoRequest videoRequest) throws IOException {
-        VideoResponse response = awsS3Service.uploadVideo(file, videoRequest);
+    public ResponseEntity<AwsS3Response> uploadShortsVideo(
+            @RequestParam("file") MultipartFile file) throws IOException {
+        AwsS3Response response = awsS3Service.uploadVideo(file);
         return ResponseEntity.ok(response);
     }
 
@@ -76,6 +78,13 @@ public class VideoController implements VideoApiController {
             throws MalformedURLException {
         URL downloadUrl = awsS3Service.generateDownloadUrl(videoId);
         return ResponseEntity.ok(downloadUrl);
+    }
+
+    @PostMapping("/highlight-selection")
+    public ResponseEntity<VideoResponse> selectHighlight(@RequestBody HighlightRequest req) {
+        String uniqueFileName = awsS3Service.deleteFilesExceptIndex(req.index(), req.s3Url());
+        VideoResponse response = videoService.createSelectedHighlight(req, uniqueFileName);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/youtube-url-validation")
@@ -99,11 +108,10 @@ public class VideoController implements VideoApiController {
     // 메인페이지에서 유튜브 관련 영상 불러오기(카테고리 지정)
     @GetMapping("/youtube/{categoryId}")
     public ResponseEntity<List<YoutubeApiResponse>> getPopularYoutubeShortsByCategory(
-            @PathVariable("categoryId")
-            YoutubeCategoryRequest youtubeCategoryRequest) throws IOException {
+            @PathVariable Long categoryId) throws IOException {
         long start = System.currentTimeMillis();
         List<YoutubeApiResponse> response = youtubeService.getShortsByCategory(
-                youtubeCategoryRequest);
+                new YoutubeCategoryRequest(categoryId));
         long end = System.currentTimeMillis();
         log.info("카테고리별 쇼츠 Cache 수행시간 : " + (end - start));
 
